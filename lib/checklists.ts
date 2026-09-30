@@ -14,8 +14,19 @@ export type Action =
 
 export const MAX_TEXT = 120;
 
+/** Zero-width space/joiners and word joiner: invisible, so never meaningful in an item. */
+const INVISIBLE = /[\u200B-\u200D\u2060]/g;
+
 export function normalizeText(text: string): string {
-  return text.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
+  let out = text.replace(INVISIBLE, "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
+  // Don't keep half of an emoji at the length cap.
+  if (/[\uD800-\uDBFF]$/.test(out)) out = out.slice(0, -1);
+  return out.trimEnd();
+}
+
+/** Comparison key for duplicate detection: NFKC + case-insensitive ("Cafe\u0301" = "café"). */
+export function itemKey(text: string): string {
+  return normalizeText(text).normalize("NFKC").toLowerCase();
 }
 
 function mapList(state: Checklist[], listId: string, fn: (l: Checklist) => Checklist): Checklist[] {
@@ -34,8 +45,8 @@ export function reducer(state: Checklist[], action: Action): Checklist[] {
       const text = normalizeText(action.text);
       if (!text) return state;
       return mapList(state, action.listId, (l) =>
-        // Ignore exact duplicates (case-insensitive) so double taps don't add twice.
-        l.items.some((i) => i.text.toLowerCase() === text.toLowerCase())
+        // Ignore duplicates (case, Unicode form and invisible characters ignored) so double taps don't add twice.
+        l.items.some((i) => itemKey(i.text) === itemKey(text))
           ? l
           : { ...l, items: [...l.items, { id: action.id, text, done: false }] },
       );

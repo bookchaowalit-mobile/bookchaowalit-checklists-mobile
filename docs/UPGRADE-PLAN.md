@@ -48,3 +48,11 @@ Score: 7/10 (was 6/10) — checklists survive restarts; reducer logic unchanged 
 - Accessibility: per-list action links (Uncheck all / Clear done / Delete list) name the list they act on; profile links get link roles.
 - Advisories: `overrides.postcss ^8.5.28` clears the high-severity PostCSS advisory in Expo metro-config (minor bump). Remaining `image-size` (metro, bundler-only), `uuid` (via `xcode`) and `decode-uri-component` (via `query-string@7`) need an Expo SDK major upgrade; deliberately not auto-fixed.
 - Verified: typecheck, lint, 14 vitest tests, Android `expo export` bundle.
+
+## Done in this pass (pass 3)
+
+Score: 7.5/10 (was 7/10) — edge-case hunt in `lib/checklists.ts`.
+
+- Bug: duplicate-item detection only lowercased, so "Caf​é", "﻿café" (BOM from paste) or a decomposed "Café" were added as new items next to "Café". Duplicates now compare an NFKC, invisible-stripped key (`itemKey`), and zero-width characters are removed from stored text.
+- Bug: `normalizeText` could keep half of an emoji at the 120-unit cap.
+- Verified: typecheck, lint, 17 vitest tests, Android `expo export`.

@@ -49,3 +49,21 @@ describe("progress", () => {
     expect(progress(one()[0])).toEqual({ done: 0, total: 0, ratio: 0 });
   });
 });
+
+describe("pass 3 edge cases", () => {
+  const base = (): Checklist[] => [{ id: "l", title: "L", items: [{ id: "1", text: "Café", done: false }] }];
+  const add = (text: string) => reducer(base(), { type: "addItem", listId: "l", id: "2", text })[0].items.length;
+  it("treats zero-width, BOM and decomposed-accent variants as duplicates", () => {
+    expect(add("Caf\u200Bé")).toBe(1);
+    expect(add("\uFEFFcafé")).toBe(1);
+    expect(add("Cafe\u0301")).toBe(1);
+    expect(add("Cafe")).toBe(2);
+  });
+  it("strips invisible characters from stored text", () => {
+    expect(normalizeText("Pass\u200Bport\u2060")).toBe("Passport");
+  });
+  it("never stores half an emoji at the length cap", () => {
+    const out = normalizeText("x".repeat(MAX_TEXT - 1) + "🧳");
+    expect(out).toBe("x".repeat(MAX_TEXT - 1));
+  });
+});
