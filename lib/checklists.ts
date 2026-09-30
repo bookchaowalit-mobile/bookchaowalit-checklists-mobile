@@ -81,3 +81,16 @@ export const SAMPLE_LISTS: Checklist[] = [
     ],
   },
 ];
+
+function isItem(value: unknown): value is Item {
+  if (typeof value !== "object" || value === null) return false;
+  const i = value as Record<string, unknown>;
+  return typeof i.id === "string" && typeof i.text === "string" && typeof i.done === "boolean";
+}
+
+/** Type guard used when loading checklists from local storage. */
+export function isChecklist(value: unknown): value is Checklist {
+  if (typeof value !== "object" || value === null) return false;
+  const l = value as Record<string, unknown>;
+  return typeof l.id === "string" && typeof l.title === "string" && Array.isArray(l.items) && l.items.every(isItem);
+}

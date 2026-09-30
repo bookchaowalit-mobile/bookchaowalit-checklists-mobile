@@ -1,12 +1,18 @@
-import { useReducer, useState, type Dispatch } from "react";
+import { useCallback, useState, type Dispatch } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { MAX_TEXT, progress, reducer, SAMPLE_LISTS, type Action, type Checklist } from "../../lib/checklists";
+import { isChecklist, MAX_TEXT, progress, reducer, SAMPLE_LISTS, type Action, type Checklist } from "../../lib/checklists";
+import { listCodec } from "../../lib/persist";
+import { usePersistentState } from "../../lib/usePersistentState";
+
+const listsCodec = listCodec(isChecklist);
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export default function ChecklistsScreen() {
-  const [lists, dispatch] = useReducer(reducer, SAMPLE_LISTS);
+  const [lists, setLists] = usePersistentState<Checklist[]>("checklists.lists.v1", SAMPLE_LISTS, listsCodec);
+  const dispatch: Dispatch<Action> = useCallback((action: Action) => setLists((state) => reducer(state, action)), [setLists]);
+
   const [title, setTitle] = useState("");
 
   const addList = () => {
@@ -96,17 +102,28 @@ function ChecklistCard({ list, dispatch }: { list: Checklist; dispatch: Dispatch
       </View>
 
       <View style={styles.actions}>
-        <ActionLink label="Uncheck all" onPress={() => dispatch({ type: "reset", listId: list.id })} />
-        <ActionLink label="Clear done" onPress={() => dispatch({ type: "clearDone", listId: list.id })} />
-        <ActionLink label="Delete list" danger onPress={() => dispatch({ type: "removeList", listId: list.id })} />
+        <ActionLink label="Uncheck all" context={list.title} onPress={() => dispatch({ type: "reset", listId: list.id })} />
+        <ActionLink label="Clear done" context={list.title} onPress={() => dispatch({ type: "clearDone", listId: list.id })} />
+        <ActionLink label="Delete list" context={list.title} danger onPress={() => dispatch({ type: "removeList", listId: list.id })} />
       </View>
     </View>
   );
 }
 
-function ActionLink({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+function ActionLink({
+  label,
+  context,
+  onPress,
+  danger,
+}: {
+  label: string;
+  context: string;
+  onPress: () => void;
+  danger?: boolean;
+}) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" hitSlop={6}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}: ${context}`} hitSlop={6}>
+
       <Text style={[styles.action, danger && styles.danger]}>{label}</Text>
     </Pressable>
   );
