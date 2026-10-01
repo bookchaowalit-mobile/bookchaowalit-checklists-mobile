@@ -1,125 +1,152 @@
-import { StyleSheet, Text, View, ScrollView, Pressable } from "react-native";
+import { useCallback, useState, type Dispatch } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Link } from "expo-router";
+import { isChecklist, MAX_TEXT, progress, reducer, SAMPLE_LISTS, type Action, type Checklist } from "../../lib/checklists";
+import { listCodec } from "../../lib/persist";
+import { usePersistentState } from "../../lib/usePersistentState";
 
-export default function HomeScreen() {
+const listsCodec = listCodec(isChecklist);
+
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+export default function ChecklistsScreen() {
+  const [lists, setLists] = usePersistentState<Checklist[]>("checklists.lists.v1", SAMPLE_LISTS, listsCodec);
+  const dispatch: Dispatch<Action> = useCallback((action: Action) => setLists((state) => reducer(state, action)), [setLists]);
+
+  const [title, setTitle] = useState("");
+
+  const addList = () => {
+    dispatch({ type: "addList", id: newId(), title });
+    setTitle("");
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Checklists</Text>
-        <Text style={styles.subtitle}>Checklists — Mobile app (expo)</Text>
-      </View>
-
-      <View style={styles.cardGrid}>
-        <FeatureCard
-          icon="rocket"
-          title="Getting Started"
-          description="Welcome to the mobile version. Start building your experience."
+    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.newList}>
+        <TextInput
+          style={[styles.input, styles.flex]}
+          placeholder="New checklist title"
+          value={title}
+          onChangeText={setTitle}
+          onSubmitEditing={addList}
+          maxLength={MAX_TEXT}
+          accessibilityLabel="New checklist title"
         />
-        <FeatureCard
-          icon="code"
-          title="Tech Stack"
-          description="Built with Expo, React Native, and TypeScript."
-        />
-        <FeatureCard
-          icon="phone-portrait"
-          title="Cross-Platform"
-          description="Runs on iOS, Android, and Web from a single codebase."
-        />
+        <Pressable style={styles.iconButton} onPress={addList} accessibilityRole="button" accessibilityLabel="Create checklist">
+          <Ionicons name="add" size={24} color="#fff" />
+        </Pressable>
       </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Part of Chaowalit Greepoke's 101 Portfolio Projects
-        </Text>
-        <Link href="https://bookchaowalit.com" asChild>
-          <Pressable>
-            <Text style={styles.link}>bookchaowalit.com</Text>
-          </Pressable>
-        </Link>
-      </View>
+      {lists.length === 0 && <Text style={styles.empty}>No checklists yet.</Text>}
+      {lists.map((list) => (
+        <ChecklistCard key={list.id} list={list} dispatch={dispatch} />
+      ))}
     </ScrollView>
   );
 }
 
-function FeatureCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  description: string;
-}) {
+function ChecklistCard({ list, dispatch }: { list: Checklist; dispatch: Dispatch<Action> }) {
+  const [text, setText] = useState("");
+  const p = progress(list);
+  const addItem = () => {
+    dispatch({ type: "addItem", listId: list.id, id: newId(), text });
+    setText("");
+  };
+
   return (
     <View style={styles.card}>
-      <Ionicons name={icon} size={28} color="#4A90D9" />
-      <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={styles.cardDescription}>{description}</Text>
+      <View style={styles.row}>
+        <Text style={styles.title}>{list.title}</Text>
+        <Text style={styles.count}>
+          {p.done}/{p.total}
+        </Text>
+      </View>
+      <View style={styles.track} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: p.total, now: p.done }}>
+        <View style={[styles.fill, { width: `${p.ratio * 100}%` }]} />
+      </View>
+
+      {list.items.map((item) => (
+        <View key={item.id} style={styles.itemRow}>
+          <Pressable
+            style={styles.itemToggle}
+            onPress={() => dispatch({ type: "toggleItem", listId: list.id, itemId: item.id })}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: item.done }}
+          >
+            <Ionicons name={item.done ? "checkbox" : "square-outline"} size={22} color="#4A90D9" />
+            <Text style={[styles.itemText, item.done && styles.itemDone]}>{item.text}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => dispatch({ type: "removeItem", listId: list.id, itemId: item.id })}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${item.text}`}
+            hitSlop={10}
+          >
+            <Ionicons name="close" size={20} color="#999" />
+          </Pressable>
+        </View>
+      ))}
+
+      <View style={styles.row}>
+        <TextInput
+          style={[styles.input, styles.flex]}
+          placeholder="Add item"
+          value={text}
+          onChangeText={setText}
+          onSubmitEditing={addItem}
+          maxLength={MAX_TEXT}
+          accessibilityLabel={`Add item to ${list.title}`}
+        />
+        <Pressable style={styles.iconButton} onPress={addItem} accessibilityRole="button" accessibilityLabel="Add item">
+          <Ionicons name="add" size={22} color="#fff" />
+        </Pressable>
+      </View>
+
+      <View style={styles.actions}>
+        <ActionLink label="Uncheck all" context={list.title} onPress={() => dispatch({ type: "reset", listId: list.id })} />
+        <ActionLink label="Clear done" context={list.title} onPress={() => dispatch({ type: "clearDone", listId: list.id })} />
+        <ActionLink label="Delete list" context={list.title} danger onPress={() => dispatch({ type: "removeList", listId: list.id })} />
+      </View>
     </View>
   );
 }
 
+function ActionLink({
+  label,
+  context,
+  onPress,
+  danger,
+}: {
+  label: string;
+  context: string;
+  onPress: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}: ${context}`} hitSlop={6}>
+
+      <Text style={[styles.action, danger && styles.danger]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  header: {
-    backgroundColor: "#4A90D9",
-    padding: 24,
-    paddingTop: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
-    lineHeight: 20,
-  },
-  cardGrid: {
-    padding: 16,
-    gap: 12,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    alignItems: "center",
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  footer: {
-    padding: 24,
-    alignItems: "center",
-    gap: 8,
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#999",
-  },
-  link: {
-    fontSize: 14,
-    color: "#4A90D9",
-    fontWeight: "500",
-  },
+  container: { flex: 1, backgroundColor: "#F5F5F5" },
+  newList: { flexDirection: "row", gap: 8, padding: 16 },
+  flex: { flex: 1 },
+  input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  iconButton: { width: 46, borderRadius: 8, backgroundColor: "#4A90D9", alignItems: "center", justifyContent: "center" },
+  empty: { textAlign: "center", color: "#888", marginTop: 24 },
+  card: { backgroundColor: "#fff", borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 16, gap: 8, elevation: 2 },
+  row: { flexDirection: "row", alignItems: "center", gap: 8 },
+  title: { flex: 1, fontSize: 18, fontWeight: "700", color: "#333" },
+  count: { fontSize: 14, color: "#666", fontWeight: "600" },
+  track: { height: 8, backgroundColor: "#E3ECF7", borderRadius: 4, overflow: "hidden" },
+  fill: { height: "100%", backgroundColor: "#4A90D9" },
+  itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
+  itemToggle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
+  itemText: { flex: 1, fontSize: 16, color: "#333" },
+  itemDone: { color: "#999", textDecorationLine: "line-through" },
+  actions: { flexDirection: "row", gap: 16, marginTop: 4 },
+  action: { color: "#4A90D9", fontWeight: "600", fontSize: 13 },
+  danger: { color: "#B00020" },
 });
